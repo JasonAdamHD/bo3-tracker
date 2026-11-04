@@ -71,7 +71,8 @@ def init_db():
                           ("notes", "TEXT"),           # rich text (sanitized HTML)
                           ("my_rating", "INTEGER"),    # 1-5, NULL = unrated
                           ("steam_score", "REAL"),     # Steam's 0-1 rating score
-                          ("votes_up", "INTEGER"), ("votes_down", "INTEGER")):
+                          ("votes_up", "INTEGER"), ("votes_down", "INTEGER"),
+                          ("file_size", "INTEGER")):   # download size in bytes
             if col not in cols:
                 con.execute(f"ALTER TABLE maps ADD COLUMN {col} {kind}")
 
@@ -102,6 +103,13 @@ def votes_of(it):
     return (v.get("score"), v.get("votes_up"), v.get("votes_down"))
 
 
+def size_of(it):
+    try:
+        return int(it.get("file_size"))
+    except (TypeError, ValueError):
+        return None
+
+
 def save_items(items, known):
     """Insert maps we don't have yet; refresh ratings of ones we do. Returns # new."""
     rows, rating_updates = [], []
@@ -109,8 +117,8 @@ def save_items(items, known):
         fid = str(it.get("publishedfileid"))
         votes = votes_of(it)
         if fid in known:
-            if votes:
-                rating_updates.append((*votes, fid))
+            if votes or size_of(it) is not None:
+                rating_updates.append((*(votes or (None, None, None)), size_of(it), fid))
             continue
         ts = int(it.get("time_created") or 0)
         rows.append((
@@ -122,15 +130,18 @@ def save_items(items, known):
             it.get("preview_url") or None,
             str(it["creator"]) if it.get("creator") else None,
             *(votes or (None, None, None)),
+            size_of(it),
         ))
         known.add(fid)
     with db() as con:
         con.executemany(
             "INSERT OR IGNORE INTO maps (id, name, date_uploaded, uploaded_ts, added_ts,"
-            " preview_url, creator_id, steam_score, votes_up, votes_down)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
+            " preview_url, creator_id, steam_score, votes_up, votes_down, file_size)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", rows)
         con.executemany(
-            "UPDATE maps SET steam_score = ?, votes_up = ?, votes_down = ? WHERE id = ?",
+            "UPDATE maps SET steam_score = COALESCE(?, steam_score),"
+            " votes_up = COALESCE(?, votes_up), votes_down = COALESCE(?, votes_down),"
+            " file_size = COALESCE(?, file_size) WHERE id = ?",
             rating_updates)
     return len(rows)
 
@@ -282,9 +293,10 @@ def apply_details(job, key, ids):
             con.execute(
                 "UPDATE maps SET preview_url = ?, creator_id = ?,"
                 " steam_score = COALESCE(?, steam_score), votes_up = COALESCE(?, votes_up),"
-                " votes_down = COALESCE(?, votes_down) WHERE id = ?",
+                " votes_down = COALESCE(?, votes_down),"
+                " file_size = COALESCE(?, file_size, 0) WHERE id = ?",
                 (d.get("preview_url") or "", str(d.get("creator") or ""),
-                 *(votes or (None, None, None)), fid))
+                 *(votes or (None, None, None)), size_of(d), fid))
     job.updated += len(ids)
 
 
@@ -295,10 +307,11 @@ def backfill_details(job, key, max_calls=None):
         with db() as con:
             ids = [r["id"] for r in con.execute(
                 "SELECT id FROM maps WHERE preview_url IS NULL OR creator_id IS NULL"
+                " OR file_size IS NULL"
                 " ORDER BY uploaded_ts DESC LIMIT 100")]
         if not ids:
             return
-        job.stage = "Filling in pictures, creators and ratings"
+        job.stage = "Filling in pictures, creators, ratings and sizes"
         apply_details(job, key, ids)
         done += 1
 
@@ -308,7 +321,7 @@ def refresh_all_details(job, key):
     with db() as con:
         ids = [r["id"] for r in con.execute("SELECT id FROM maps ORDER BY uploaded_ts DESC")]
     job.total = len(ids)
-    job.stage = "Refreshing pictures, creators and ratings"
+    job.stage = "Refreshing pictures, creators, ratings and sizes"
     for i in range(0, len(ids), 100):
         apply_details(job, key, ids[i:i + 100])
         job.checked = min(i + 100, len(ids))
@@ -392,6 +405,7 @@ def row_out(r):
         "steam_score": r["steam_score"],
         "votes": (r["votes_up"] or 0) + (r["votes_down"] or 0),
         "votes_up": r["votes_up"],
+        "file_size": r["file_size"] or None,
     }
 
 
@@ -478,7 +492,7 @@ def export_csv():
     w = csv.writer(buf)
     w.writerow(["MapName", "SteamWorkshopLink", "DateUploaded", "Completed",
                 "DateCompleted", "Creator", "HasEasterEgg", "SteamStars", "SteamVotes",
-                "MyRating", "Notes"])
+                "MyRating", "SizeMB", "Notes"])
     with db() as con:
         for r in con.execute(MAP_QUERY + " ORDER BY m.uploaded_ts DESC"):
             score = r["steam_score"]
@@ -488,7 +502,9 @@ def export_csv():
                         {"yes": "Yes", "no": "No"}.get(r["has_ee"], ""),
                         f"{score * 5:.1f}" if score is not None else "",
                         (r["votes_up"] or 0) + (r["votes_down"] or 0),
-                        r["my_rating"] or "", html_to_text(r["notes"])])
+                        r["my_rating"] or "",
+                        f"{r['file_size'] / 1e6:.1f}" if r["file_size"] else "",
+                        html_to_text(r["notes"])])
     return Response(buf.getvalue(), mimetype="text/csv",
                     headers={"Content-Disposition": "attachment; filename=bo3_maps.csv"})
 

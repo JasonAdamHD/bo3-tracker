@@ -73,6 +73,8 @@
 
   .notebtn { max-width:220px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; width:100%; }
   .notebtn.empty { color:var(--muted); }
+  td.size { white-space:nowrap; text-align:right; font-variant-numeric:tabular-nums; }
+  #sizes { color:var(--muted); }
   .pager { display:flex; gap:8px; align-items:center; margin-top:12px; color:var(--muted); }
 
   /* Notes editor */
@@ -105,7 +107,7 @@
     <button class="primary" id="refetch">Fetch new maps</button>
     <label class="chk" title="Most maps to check in one Fetch new maps run">max <input type="number" id="limit" value="100" min="1"></label>
     <button id="getall" title="Imports every map on the workshop. Runs on the server until done; you can close this tab.">Get all maps</button>
-    <button id="details" title="Re-downloads pictures, creators and Steam ratings for every map in your list">Refresh Steam data</button>
+    <button id="details" title="Re-downloads pictures, creators, Steam ratings and sizes for every map in your list">Refresh Steam data</button>
     <a class="btn" href="/export.csv">Export CSV</a>
   </div>
   <div id="job"></div>
@@ -129,6 +131,7 @@
       <th data-k="name">Map</th>
       <th data-k="creator">Creator</th>
       <th data-k="date_uploaded">Uploaded</th>
+      <th data-k="file_size" title="Download size">Size</th>
       <th data-k="steam_score" title="Rating from Steam workshop votes">Steam rating</th>
       <th data-k="my_rating">My rating</th>
       <th data-k="has_ee">Easter egg</th>
@@ -141,6 +144,7 @@
   </div>
   <div class="pager">
     <button id="prev">‹ Prev</button><span id="page"></span><button id="next">Next ›</button>
+    <span id="sizes" class="small"></span>
     <label class="chk" style="margin-left:auto">Per page <select id="perPage"><option>10</option><option>25</option><option>50</option><option>100</option></select></label>
   </div>
 </main>
@@ -254,6 +258,20 @@ function myRating(m) {
   return h + `</span>`;
 }
 
+function size(b) {
+  if (!b) return "—";
+  const u = ["B", "KB", "MB", "GB", "TB"];
+  let i = 0;
+  while (b >= 1000 && i < u.length - 1) { b /= 1000; i++; }
+  return `${b < 10 && i ? b.toFixed(2) : b < 100 && i ? b.toFixed(1) : Math.round(b)} ${u[i]}`;
+}
+
+function sizeSum(list) {
+  const known = list.filter(m => m.file_size), total = known.reduce((t, m) => t + m.file_size, 0);
+  const missing = list.length - known.length;
+  return size(total) + (missing ? ` (${n(missing)} unknown)` : "");
+}
+
 function render() {
   hidePeek();                       // its thumbnail is about to be replaced
   const list = visible(), pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
@@ -268,13 +286,18 @@ function render() {
   $("viewProg").textContent = list.length !== maps.length && list.length
     ? `This view: ${n(vDone)} / ${n(list.length)} completed (${Math.round(100 * vDone / list.length)}%)` : "";
   $("page").textContent = `Page ${page + 1} of ${pages} (${n(list.length)} shown)`;
-  $("rows").innerHTML = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE).map(m => `
+  const shown = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
+  $("sizes").textContent = `Size: this page ${sizeSum(shown)}`
+    + (list.length !== maps.length ? ` · this view ${sizeSum(list)}` : "")
+    + ` · all maps ${sizeSum(maps)}`;
+  $("rows").innerHTML = shown.map(m => `
     <tr class="${m.completed ? "done" : ""}" data-id="${m.id}">
       <td class="name"><a class="map" href="${m.link}" target="_blank" rel="noopener">
         ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" data-full="${esc(m.preview_url)}" loading="lazy" alt="">` : `<span class="noimg"></span>`}
         <span>${esc(m.name)}</span></a></td>
       <td>${m.creator_link ? `<a class="creator" href="${esc(m.creator_link)}" target="_blank" rel="noopener">${esc(m.creator || "Unknown")}</a>` : `<span class="muted">—</span>`}</td>
       <td style="white-space:nowrap">${m.date_uploaded}</td>
+      <td class="size" title="${m.file_size ? n(m.file_size) + " bytes" : "Size not known yet"}">${size(m.file_size)}</td>
       <td>${steamRating(m)}</td>
       <td>${myRating(m)}</td>
       <td><select class="ee ${m.has_ee ? "ee-" + m.has_ee : ""}">
