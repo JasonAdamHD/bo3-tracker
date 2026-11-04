@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>bo3-tracker</Name>
+  <Repository>ghcr.io/YOUR_GITHUB_USERNAME/bo3-tracker:latest</Repository>
+  <Registry>https://ghcr.io</Registry>
+  <Network>bridge</Network>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Overview>Tracks Black Ops III workshop maps and which ones you've completed.</Overview>
+  <Category>Tools:</Category>
+  <WebUI>http://[IP]:[PORT:5000]/</WebUI>
+  <Config Name="Web UI port" Target="5000" Default="5000" Mode="tcp" Description="Port the site is served on" Type="Port" Display="always" Required="true" Mask="false">5000</Config>
+  <Config Name="Data" Target="/data" Default="/mnt/user/appdata/bo3-tracker" Mode="rw" Description="Where maps.db is stored" Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/bo3-tracker</Config>
+  <Config Name="Steam API key" Target="STEAM_API_KEY" Default="" Mode="" Description="From steamcommunity.com/dev/apikey" Type="Variable" Display="always" Required="true" Mask="true"></Config>
+</Container>

@@ -1,0 +1,12 @@
+services:
+  bo3-tracker:
+    build: .
+    image: bo3-tracker
+    container_name: bo3-tracker
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - STEAM_API_KEY=PASTE_YOUR_KEY_HERE
+    volumes:
+      - /mnt/user/appdata/bo3-tracker:/data

@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>BO3 Map Tracker</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { --bg:#14161a; --panel:#1d2026; --panel2:#252931; --line:#2c3038; --text:#e6e8eb; --muted:#8b929c; --accent:#e8742c; --star:#f5b301; --ok:#4caf6a; --bad:#d9534f; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.4 system-ui, sans-serif; background:var(--bg); color:var(--text); }
+  header { padding:16px 24px; border-bottom:1px solid var(--line); display:flex; gap:16px; align-items:center; flex-wrap:wrap; }
+  h1 { font-size:18px; margin:0 auto 0 0; }
+  .stats { color:var(--muted); }
+  .prog { display:flex; align-items:center; gap:10px; font-weight:600; }
+  .progbar { width:180px; height:10px; background:var(--panel2); border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  #progFill { height:100%; width:0; background:var(--ok); transition:width .3s; }
+  #viewProg { color:var(--muted); }
+  main { padding:16px 24px; }
+  .bar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px; }
+  input, select, button { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 10px; }
+  input[type=search] { min-width:260px; }
+  input[type=number] { width:90px; }
+  button { cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#111; font-weight:600; }
+  button:disabled { opacity:.5; cursor:wait; }
+  button.active { border-color:var(--accent); color:var(--accent); }
+  a.btn { color:var(--text); text-decoration:none; border:1px solid var(--line); border-radius:6px; padding:6px 10px; background:var(--panel); }
+  label.chk { display:flex; gap:6px; align-items:center; color:var(--muted); }
+  #msg, #job { margin-bottom:12px; min-height:20px; color:var(--muted); }
+  #msg.err, #job.err { color:#ff6b6b; }
+
+  .tablewrap { overflow-x:auto; border-radius:8px; }
+  table { width:100%; border-collapse:collapse; background:var(--panel); }
+  th, td { padding:8px 10px; border-bottom:1px solid var(--line); text-align:left; vertical-align:middle; }
+  th { color:var(--muted); font-weight:600; cursor:pointer; user-select:none; white-space:nowrap; }
+  th.nosort { cursor:default; }
+  td a { color:var(--accent); }
+  a.map { display:flex; align-items:center; gap:12px; color:var(--text); text-decoration:none; font-weight:500; min-width:260px; }
+  a.map:hover span { color:var(--accent); text-decoration:underline; }
+  a.map img, .noimg { width:128px; height:72px; object-fit:cover; border-radius:4px; background:#000; flex:none; display:block; }
+  a.creator { color:var(--text); }
+  a.creator:hover { color:var(--accent); }
+  .muted { color:var(--muted); }
+  .small { font-size:12px; }
+  tr.done a.map span { color:var(--muted); }
+  tr.done img { opacity:.55; }
+  td input[type=date] { padding:3px 6px; }
+  td select { padding:3px 6px; }
+  select.ee-yes { border-color:var(--ok); color:var(--ok); }
+  select.ee-no { color:var(--muted); }
+
+  /* Steam rating: grey stars with a gold overlay clipped to the score */
+  .stars { position:relative; display:inline-block; font-size:16px; letter-spacing:1px; line-height:1; white-space:nowrap; }
+  .stars::before { content:"★★★★★"; color:#3a3f48; }
+  .stars span { position:absolute; inset:0 auto 0 0; overflow:hidden; color:var(--star); }
+  .stars span::before { content:"★★★★★"; }
+  .rating { display:flex; flex-direction:column; gap:2px; white-space:nowrap; }
+  .rating.few .stars { opacity:.5; }
+
+  /* My rating: clickable stars */
+  .mine { display:inline-flex; white-space:nowrap; }
+  .mine button { background:none; border:none; padding:0 1px; font-size:18px; line-height:1; color:#3a3f48; cursor:pointer; }
+  .mine button.on { color:var(--star); }
+  .mine:hover button { color:var(--star); }
+  .mine button:hover ~ button { color:#3a3f48; }
+
+  .notebtn { max-width:220px; text-align:left; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; display:block; width:100%; }
+  .notebtn.empty { color:var(--muted); }
+  .pager { display:flex; gap:8px; align-items:center; margin-top:12px; color:var(--muted); }
+
+  /* Notes editor */
+  dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:0; width:min(760px, 94vw); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  .dlg-head { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); }
+  .dlg-head img { width:96px; height:54px; object-fit:cover; border-radius:4px; background:#000; }
+  .dlg-head h2 { font-size:16px; margin:0; flex:1; }
+  .tools { display:flex; gap:4px; flex-wrap:wrap; padding:8px 16px; border-bottom:1px solid var(--line); background:var(--panel2); }
+  .tools button { padding:4px 9px; min-width:32px; }
+  .tools .sep { width:1px; background:var(--line); margin:0 4px; }
+  #editor { min-height:300px; max-height:60vh; overflow-y:auto; padding:14px 16px; outline:none; line-height:1.55; }
+  #editor:empty::before { content:attr(data-placeholder); color:var(--muted); }
+  #editor h3 { margin:.6em 0 .3em; font-size:17px; }
+  #editor blockquote { border-left:3px solid var(--accent); margin:.5em 0; padding:2px 12px; color:#c9cdd3; }
+  #editor a { color:var(--accent); }
+  #editor ul, #editor ol { padding-left:24px; }
+  .dlg-foot { display:flex; gap:10px; align-items:center; justify-content:flex-end; padding:12px 16px; border-top:1px solid var(--line); }
+  .dlg-foot .hint { margin-right:auto; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>BO3 Workshop Map Tracker</h1>
+  <div class="prog"><div class="progbar"><div id="progFill"></div></div><span id="progText"></span></div>
+  <span class="stats" id="stats"></span>
+</header>
+<main>
+  <div class="bar">
+    <button class="primary" id="refetch">Fetch new maps</button>
+    <label class="chk" title="Most maps to check in one Fetch new maps run">max <input type="number" id="limit" value="100" min="1"></label>
+    <button id="getall" title="Imports every map on the workshop. Runs on the server until done; you can close this tab.">Get all maps</button>
+    <button id="details" title="Re-downloads pictures, creators and Steam ratings for every map in your list">Refresh Steam data</button>
+    <a class="btn" href="/export.csv">Export CSV</a>
+  </div>
+  <div id="job"></div>
+  <div class="bar">
+    <input type="search" id="q" placeholder="Search map, creator or notes…">
+    <select id="show">
+      <option value="all">All maps</option>
+      <option value="todo">Not completed</option>
+      <option value="done">Completed</option>
+      <option value="ee">Has Easter egg</option>
+      <option value="rated">Rated by me</option>
+      <option value="unrated">Not rated by me</option>
+      <option value="notes">Has notes</option>
+    </select>
+    <span id="viewProg"></span>
+  </div>
+  <div id="msg"></div>
+  <div class="tablewrap">
+  <table>
+    <thead><tr>
+      <th data-k="name">Map</th>
+      <th data-k="creator">Creator</th>
+      <th data-k="date_uploaded">Uploaded</th>
+      <th data-k="steam_score" title="Rating from Steam workshop votes">Steam rating</th>
+      <th data-k="my_rating">My rating</th>
+      <th data-k="has_ee">Easter egg</th>
+      <th data-k="completed">Completed</th>
+      <th data-k="date_completed">Date completed</th>
+      <th data-k="notes">Notes</th>
+    </tr></thead>
+    <tbody id="rows"></tbody>
+  </table>
+  </div>
+  <div class="pager">
+    <button id="prev">‹ Prev</button><span id="page"></span><button id="next">Next ›</button>
+  </div>
+</main>
+
+<dialog id="notesDlg">
+  <div class="dlg-head"><img id="dlgImg" alt=""><h2 id="dlgTitle"></h2></div>
+  <div class="tools" id="tools">
+    <button data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+    <button data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+    <button data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+    <button data-cmd="strikeThrough" title="Strikethrough"><s>S</s></button>
+    <span class="sep"></span>
+    <button data-cmd="formatBlock" data-val="h3" title="Heading">H</button>
+    <button data-cmd="formatBlock" data-val="p" title="Normal text">¶</button>
+    <button data-cmd="formatBlock" data-val="blockquote" title="Quote">❝</button>
+    <span class="sep"></span>
+    <button data-cmd="insertUnorderedList" title="Bullet list">• List</button>
+    <button data-cmd="insertOrderedList" title="Numbered list">1. List</button>
+    <span class="sep"></span>
+    <button data-cmd="link" title="Add link">Link</button>
+    <button data-cmd="removeFormat" title="Clear formatting">Clear</button>
+  </div>
+  <div id="editor" contenteditable="true" data-placeholder="How did it go? Easter egg steps, tips, bugs, who you played with…"></div>
+  <div class="dlg-foot">
+    <span class="hint">Ctrl+S to save · Esc to close</span>
+    <button id="dlgCancel">Cancel</button>
+    <button class="primary" id="dlgSave">Save notes</button>
+  </div>
+</dialog>
+
+<script>
+const PER_PAGE = 100;
+let maps = [], sortKey = "date_uploaded", sortDir = -1, page = 0;
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const n = x => (x ?? 0).toLocaleString();
+
+// Ask Steam's image server for a small version instead of the full-size upload.
+const thumb = url => url + (url.includes("?") ? "&" : "?") + "imw=160&imh=90&ima=fit&impolicy=Letterbox";
+
+function msg(text, err) { $("msg").textContent = text || ""; $("msg").className = err ? "err" : ""; }
+
+// ---- notes are rich text; only keep safe formatting tags
+const ALLOWED = new Set(["B","STRONG","I","EM","U","S","STRIKE","P","DIV","BR","UL","OL","LI","H3","H4","BLOCKQUOTE","A","SPAN"]);
+function sanitize(html) {
+  const t = document.createElement("template");
+  t.innerHTML = html || "";
+  const walk = node => {
+    for (const el of [...node.children]) {
+      if (!ALLOWED.has(el.tagName)) {
+        if (["SCRIPT","STYLE","IFRAME","OBJECT","IMG","SVG","VIDEO","AUDIO"].includes(el.tagName)) { el.remove(); continue; }
+        walk(el); el.replaceWith(...el.childNodes); continue;
+      }
+      const href = el.tagName === "A" ? el.getAttribute("href") : null;
+      for (const a of [...el.attributes]) el.removeAttribute(a.name);
+      if (href && /^https?:\/\//i.test(href)) { el.setAttribute("href", href); el.setAttribute("target", "_blank"); el.setAttribute("rel", "noopener"); }
+      walk(el);
+    }
+  };
+  walk(t.content);
+  return t.innerHTML;
+}
+const plain = html => { const d = document.createElement("div"); d.innerHTML = sanitize(html); return d.textContent.replace(/\s+/g, " ").trim(); };
+
+async function load() {
+  const d = await (await fetch("/api/maps")).json();
+  maps = d.maps;
+  for (const m of maps) m.notes_text = plain(m.notes);
+  if (!d.has_key) msg("No Steam API key found. Set STEAM_API_KEY in the container settings (or config.json), then restart.", true);
+  render();
+}
+
+const FILTERS = {
+  all: () => true,
+  todo: m => !m.completed,
+  done: m => m.completed,
+  ee: m => m.has_ee === "yes",
+  rated: m => m.my_rating,
+  unrated: m => !m.my_rating,
+  notes: m => m.notes_text,
+};
+
+function visible() {
+  const q = $("q").value.trim().toLowerCase(), f = FILTERS[$("show").value];
+  const key = sortKey === "notes" ? "notes_text" : sortKey;
+  const empty = v => v === null || v === undefined || v === "";
+  return maps
+    .filter(m => !q || `${m.name} ${m.creator || ""} ${m.notes_text}`.toLowerCase().includes(q))
+    .filter(f)
+    .sort((a, b) => {
+      const x = a[key], y = b[key];
+      if (empty(x) || empty(y)) return empty(x) - empty(y);   // blanks always last
+      return (x < y ? -1 : x > y ? 1 : 0) * sortDir;
+    });
+}
+
+function steamRating(m) {
+  if (m.steam_score == null || !m.votes) return `<span class="muted small">No ratings</span>`;
+  const stars = m.steam_score * 5, pct = m.votes ? Math.round(100 * (m.votes_up || 0) / m.votes) : 0;
+  const few = m.votes < 10;
+  return `<div class="rating ${few ? "few" : ""}" title="${stars.toFixed(1)} / 5 · ${pct}% positive · ${n(m.votes)} votes${few ? " (not many votes yet)" : ""}">
+    <span class="stars"><span style="width:${(m.steam_score * 100).toFixed(1)}%"></span></span>
+    <span class="muted small">${stars.toFixed(1)} · ${n(m.votes)} votes</span></div>`;
+}
+
+function myRating(m) {
+  let h = `<span class="mine" title="Click a star to rate. Click your current rating again to clear it.">`;
+  for (let i = 1; i <= 5; i++) h += `<button class="r ${m.my_rating >= i ? "on" : ""}" data-r="${i}" aria-label="${i} star${i > 1 ? "s" : ""}">★</button>`;
+  return h + `</span>`;
+}
+
+function render() {
+  const list = visible(), pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
+  page = Math.min(page, pages - 1);
+  const done = maps.filter(m => m.completed).length, ee = maps.filter(m => m.has_ee === "yes").length;
+  const pct = maps.length ? (100 * done / maps.length) : 0;
+  $("progText").textContent = `${n(done)} / ${n(maps.length)} completed (${pct < 10 && pct > 0 ? pct.toFixed(1) : Math.round(pct)}%)`;
+  $("progFill").style.width = pct + "%";
+  $("stats").textContent = `${n(ee)} with Easter eggs`;
+  // Progress within the current filter/search too, when it differs from the whole list.
+  const vDone = list.filter(m => m.completed).length;
+  $("viewProg").textContent = list.length !== maps.length && list.length
+    ? `This view: ${n(vDone)} / ${n(list.length)} completed (${Math.round(100 * vDone / list.length)}%)` : "";
+  $("page").textContent = `Page ${page + 1} of ${pages} (${n(list.length)} shown)`;
+  $("rows").innerHTML = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE).map(m => `
+    <tr class="${m.completed ? "done" : ""}" data-id="${m.id}">
+      <td class="name"><a class="map" href="${m.link}" target="_blank" rel="noopener">
+        ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" loading="lazy" alt="">` : `<span class="noimg"></span>`}
+        <span>${esc(m.name)}</span></a></td>
+      <td>${m.creator_link ? `<a class="creator" href="${esc(m.creator_link)}" target="_blank" rel="noopener">${esc(m.creator || "Unknown")}</a>` : `<span class="muted">—</span>`}</td>
+      <td style="white-space:nowrap">${m.date_uploaded}</td>
+      <td>${steamRating(m)}</td>
+      <td>${myRating(m)}</td>
+      <td><select class="ee ${m.has_ee ? "ee-" + m.has_ee : ""}">
+        <option value="" ${!m.has_ee ? "selected" : ""}>?</option>
+        <option value="yes" ${m.has_ee === "yes" ? "selected" : ""}>Yes</option>
+        <option value="no" ${m.has_ee === "no" ? "selected" : ""}>No</option></select></td>
+      <td><input type="checkbox" class="c" ${m.completed ? "checked" : ""}></td>
+      <td><input type="date" class="d" value="${m.date_completed || ""}" ${m.completed ? "" : "disabled"}></td>
+      <td><button class="notebtn ${m.notes_text ? "" : "empty"}" title="${esc(m.notes_text.slice(0, 300))}">${m.notes_text ? esc(m.notes_text.slice(0, 60)) : "+ Add notes"}</button></td>
+    </tr>`).join("");
+}
+
+async function save(id, body) {
+  const r = await fetch(`/api/maps/${id}`, { method: "PATCH", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body) });
+  const m = await r.json();
+  if (m.error) { msg(m.error, true); return false; }
+  m.notes_text = plain(m.notes);
+  Object.assign(maps.find(x => x.id === id), m);
+  render();
+  return true;
+}
+
+$("rows").addEventListener("change", e => {
+  const id = e.target.closest("tr").dataset.id, cl = e.target.classList;
+  if (cl.contains("c")) save(id, { completed: e.target.checked });
+  if (cl.contains("d")) save(id, { completed: true, date_completed: e.target.value || null });
+  if (cl.contains("ee")) save(id, { has_ee: e.target.value || null });
+});
+
+$("rows").addEventListener("click", e => {
+  const tr = e.target.closest("tr"); if (!tr) return;
+  const id = tr.dataset.id, m = maps.find(x => x.id === id);
+  const star = e.target.closest("button.r");
+  if (star) { const r = +star.dataset.r; save(id, { my_rating: m.my_rating === r ? null : r }); }
+  if (e.target.closest(".notebtn")) openNotes(m);
+});
+
+// ---- notes editor
+let editing = null, original = "";
+function openNotes(m) {
+  editing = m;
+  $("dlgTitle").textContent = m.name;
+  $("dlgImg").src = m.preview_url ? thumb(m.preview_url) : "";
+  $("dlgImg").style.display = m.preview_url ? "" : "none";
+  $("editor").innerHTML = sanitize(m.notes);
+  original = $("editor").innerHTML;
+  $("notesDlg").showModal();
+  $("editor").focus();
+}
+function closeNotes(force) {
+  if (!force && $("editor").innerHTML !== original && !confirm("Discard your changes to these notes?")) return;
+  $("notesDlg").close(); editing = null;
+}
+async function saveNotes() {
+  if (!editing) return;
+  const clean = sanitize($("editor").innerHTML);
+  const isEmpty = !plain(clean);
+  if (await save(editing.id, { notes: isEmpty ? "" : clean })) closeNotes(true);
+}
+$("tools").addEventListener("mousedown", e => e.preventDefault());  // keep the text selection
+$("tools").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  const cmd = b.dataset.cmd;
+  if (cmd === "link") {
+    const url = prompt("Link address (https://…)");
+    if (url && /^https?:\/\//i.test(url)) document.execCommand("createLink", false, url);
+  } else if (cmd === "formatBlock") {
+    document.execCommand("formatBlock", false, b.dataset.val);
+  } else {
+    document.execCommand(cmd, false, null);
+  }
+  $("editor").focus();
+});
+$("editor").addEventListener("paste", e => {
+  // Keep basic formatting from pasted content but strip anything unsafe.
+  e.preventDefault();
+  const html = e.clipboardData.getData("text/html");
+  if (html) document.execCommand("insertHTML", false, sanitize(html));
+  else document.execCommand("insertText", false, e.clipboardData.getData("text/plain"));
+});
+$("notesDlg").addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveNotes(); }
+});
+$("notesDlg").addEventListener("cancel", e => { e.preventDefault(); closeNotes(); });  // Esc
+$("dlgCancel").onclick = () => closeNotes();
+$("dlgSave").onclick = saveNotes;
+
+// ---- background fetch jobs (they keep running on the server if you close the tab)
+let polling = null, lastReload = 0, wasRunning = false;
+
+function showJob(s) {
+  const running = !!s.running, mode = s.mode;
+  $("refetch").textContent = running && mode === "new" ? "Stop" : "Fetch new maps";
+  $("getall").textContent = running && mode === "all" ? "Stop getting all maps"
+    : s.import_paused ? "Resume getting all maps" : "Get all maps";
+  $("details").textContent = running && mode === "details" ? "Stop refreshing" : "Refresh Steam data";
+  $("getall").classList.toggle("active", running && mode === "all");
+  $("details").classList.toggle("active", running && mode === "details");
+  for (const [id, m] of [["refetch", "new"], ["getall", "all"], ["details", "details"]])
+    $(id).disabled = (running && mode !== m) || (running && s.stop_requested);
+  if (!mode) { $("job").textContent = ""; return; }
+  const parts = [s.stop_requested && running ? "Stopping…" : s.stage];
+  if (s.checked) parts.push(`checked ${n(s.checked)}${s.total ? " of " + n(s.total) : ""}`);
+  if (mode !== "details") parts.push(`${n(s.added)} new`);
+  if (s.updated) parts.push(`${n(s.updated)} updated`);
+  parts.push(`${n(s.calls)} API calls`);
+  $("job").textContent = parts.join(" · ");
+  $("job").className = s.error ? "err" : "";
+  if (s.error) $("job").textContent += " — " + s.error;
+}
+
+async function poll() {
+  const s = await (await fetch("/api/jobs/status")).json();
+  showJob(s);
+  if (s.running && Date.now() - lastReload > 10000) { lastReload = Date.now(); load(); }
+  if (!s.running && wasRunning) load();        // final refresh when it finishes
+  wasRunning = s.running;
+  clearTimeout(polling);
+  polling = setTimeout(poll, s.running ? 2000 : 15000);
+}
+
+async function toggleJob(mode) {
+  const s = await (await fetch("/api/jobs/status")).json();
+  if (s.running) {
+    await fetch("/api/jobs/stop", { method: "POST" });
+  } else {
+    const r = await fetch("/api/jobs/start", { method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ mode, limit: +$("limit").value || 100 }) });
+    const d = await r.json();
+    if (d.error) { $("job").textContent = d.error; $("job").className = "err"; return; }
+    lastReload = Date.now();
+  }
+  poll();
+}
+
+$("refetch").onclick = () => toggleJob("new");
+$("getall").onclick = () => toggleJob("all");
+$("details").onclick = () => toggleJob("details");
+
+document.querySelectorAll("th[data-k]").forEach(th => th.onclick = () => {
+  const k = th.dataset.k;
+  sortDir = sortKey === k ? -sortDir : (["name", "creator", "notes"].includes(k) ? 1 : -1); sortKey = k; render();
+});
+$("q").oninput = $("show").onchange = () => { page = 0; render(); };
+$("prev").onclick = () => { page = Math.max(0, page - 1); render(); };
+$("next").onclick = () => { page++; render(); };
+load();
+poll();
+</script>
+</body>
+</html>

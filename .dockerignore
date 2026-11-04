@@ -1,0 +1,10 @@
+maps.db
+config.json
+__pycache__
+*.bat
+unraid
+publish.ps1
+README.md
+docker-compose.yml
+.git
+.gitignore
