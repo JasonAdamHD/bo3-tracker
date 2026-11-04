@@ -39,6 +39,11 @@
   a.map:hover span { color:var(--accent); text-decoration:underline; }
   /* Keep each picture's own shape: fixed width, natural height (capped so tall ones don't blow up rows). */
   /* Same-size box on every row; the picture keeps its own shape inside it. */
+  /* Hover bubble with the full picture */
+  #peek { position:fixed; z-index:50; pointer-events:none; display:none; padding:6px; background:var(--panel2);
+          border:1px solid var(--line); border-radius:8px; box-shadow:0 10px 30px rgba(0,0,0,.6); }
+  #peek img { display:block; max-width:min(512px, 60vw); max-height:min(512px, 70vh); border-radius:4px; }
+  #peek .loading { width:200px; height:120px; display:grid; place-items:center; color:var(--muted); font-size:12px; }
   a.map img, .noimg { width:128px; height:96px; object-fit:contain; border-radius:4px; background:#0b0c0e; flex:none; display:block; }
   a.creator { color:var(--text); }
   a.creator:hover { color:var(--accent); }
@@ -165,6 +170,7 @@
     <button class="primary" id="dlgSave">Save notes</button>
   </div>
 </dialog>
+<div id="peek"></div>
 
 <script>
 let PER_PAGE = +localStorage.getItem("perPage") || 100;
@@ -249,6 +255,7 @@ function myRating(m) {
 }
 
 function render() {
+  hidePeek();                       // its thumbnail is about to be replaced
   const list = visible(), pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
   page = Math.min(page, pages - 1);
   const done = maps.filter(m => m.completed).length, ee = maps.filter(m => m.has_ee === "yes").length;
@@ -264,7 +271,7 @@ function render() {
   $("rows").innerHTML = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE).map(m => `
     <tr class="${m.completed ? "done" : ""}" data-id="${m.id}">
       <td class="name"><a class="map" href="${m.link}" target="_blank" rel="noopener">
-        ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" loading="lazy" alt="">` : `<span class="noimg"></span>`}
+        ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" data-full="${esc(m.preview_url)}" loading="lazy" alt="">` : `<span class="noimg"></span>`}
         <span>${esc(m.name)}</span></a></td>
       <td>${m.creator_link ? `<a class="creator" href="${esc(m.creator_link)}" target="_blank" rel="noopener">${esc(m.creator || "Unknown")}</a>` : `<span class="muted">—</span>`}</td>
       <td style="white-space:nowrap">${m.date_uploaded}</td>
@@ -304,6 +311,37 @@ $("rows").addEventListener("click", e => {
   if (star) { const r = +star.dataset.r; save(id, { my_rating: m.my_rating === r ? null : r }); }
   if (e.target.closest(".notebtn")) openNotes(m);
 });
+
+// ---- hover bubble: full-size picture next to the thumbnail
+const peek = $("peek");
+let peekFor = null;
+function placePeek() {
+  if (!peekFor) return;
+  const r = peekFor.getBoundingClientRect(), b = peek.getBoundingClientRect(), gap = 12;
+  let x = r.right + gap;                                        // prefer the right side
+  if (x + b.width > innerWidth - 8) x = Math.max(8, r.left - gap - b.width);
+  let y = r.top + r.height / 2 - b.height / 2;                  // centred on the thumbnail
+  y = Math.min(Math.max(8, y), innerHeight - b.height - 8);
+  peek.style.left = x + "px"; peek.style.top = y + "px";
+}
+function showPeek(img) {
+  peekFor = img;
+  peek.innerHTML = `<div class="loading">Loading…</div>`;
+  peek.style.display = "block"; placePeek();
+  const full = new Image();
+  full.onload = () => { if (peekFor !== img) return; peek.innerHTML = ""; peek.append(full); placePeek(); };
+  full.onerror = () => { if (peekFor === img) peek.innerHTML = `<div class="loading">Couldn't load picture</div>`; };
+  full.src = img.dataset.full;                                  // original upload (keeps GIF animation)
+}
+function hidePeek() { peekFor = null; peek.style.display = "none"; peek.innerHTML = ""; }
+$("rows").addEventListener("mouseover", e => {
+  const img = e.target.closest("a.map img");
+  if (img && img !== peekFor) showPeek(img);
+});
+$("rows").addEventListener("mouseout", e => {
+  if (peekFor && e.target === peekFor && e.relatedTarget !== peekFor) hidePeek();
+});
+addEventListener("scroll", hidePeek, true);
 
 // ---- notes editor
 let editing = null, original = "";
