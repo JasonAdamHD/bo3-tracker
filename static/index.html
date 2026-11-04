@@ -37,7 +37,10 @@
   td a { color:var(--accent); }
   a.map { display:flex; align-items:center; gap:12px; color:var(--text); text-decoration:none; font-weight:500; min-width:260px; }
   a.map:hover span { color:var(--accent); text-decoration:underline; }
-  a.map img, .noimg { width:128px; height:72px; object-fit:cover; border-radius:4px; background:#000; flex:none; display:block; }
+  /* Keep each picture's own shape: fixed width, natural height (capped so tall ones don't blow up rows). */
+  a.map img { width:128px; height:auto; max-height:128px; object-fit:contain; border-radius:4px; flex:none; display:block; }
+  a.map img:not(.ld) { height:72px; background:#000; }   /* placeholder until it loads */
+  .noimg { width:128px; height:72px; border-radius:4px; background:#000; flex:none; display:block; }
   a.creator { color:var(--text); }
   a.creator:hover { color:var(--accent); }
   .muted { color:var(--muted); }
@@ -72,7 +75,7 @@
   dialog { background:var(--panel); color:var(--text); border:1px solid var(--line); border-radius:10px; padding:0; width:min(760px, 94vw); }
   dialog::backdrop { background:rgba(0,0,0,.6); }
   .dlg-head { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--line); }
-  .dlg-head img { width:96px; height:54px; object-fit:cover; border-radius:4px; background:#000; }
+  .dlg-head img { width:96px; height:auto; max-height:96px; object-fit:contain; border-radius:4px; }
   .dlg-head h2 { font-size:16px; margin:0; flex:1; }
   .tools { display:flex; gap:4px; flex-wrap:wrap; padding:8px 16px; border-bottom:1px solid var(--line); background:var(--panel2); }
   .tools button { padding:4px 9px; min-width:32px; }
@@ -171,7 +174,8 @@ const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;
 const n = x => (x ?? 0).toLocaleString();
 
 // Ask Steam's image server for a small version instead of the full-size upload.
-const thumb = url => url + (url.includes("?") ? "&" : "?") + "imw=160&imh=90&ima=fit&impolicy=Letterbox";
+// Width only, so Steam keeps the original aspect ratio (256px stays sharp on high-DPI screens).
+const thumb = url => url + (url.includes("?") ? "&" : "?") + "imw=256&ima=fit";
 
 function msg(text, err) { $("msg").textContent = text || ""; $("msg").className = err ? "err" : ""; }
 
@@ -260,7 +264,7 @@ function render() {
   $("rows").innerHTML = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE).map(m => `
     <tr class="${m.completed ? "done" : ""}" data-id="${m.id}">
       <td class="name"><a class="map" href="${m.link}" target="_blank" rel="noopener">
-        ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" loading="lazy" alt="">` : `<span class="noimg"></span>`}
+        ${m.preview_url ? `<img src="${esc(thumb(m.preview_url))}" loading="lazy" alt="" onload="this.classList.add('ld')">` : `<span class="noimg"></span>`}
         <span>${esc(m.name)}</span></a></td>
       <td>${m.creator_link ? `<a class="creator" href="${esc(m.creator_link)}" target="_blank" rel="noopener">${esc(m.creator || "Unknown")}</a>` : `<span class="muted">—</span>`}</td>
       <td style="white-space:nowrap">${m.date_uploaded}</td>
